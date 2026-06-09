@@ -1,0 +1,2 @@
+(A) write documentation
+(B) implement builder pattern for simulation parameters
