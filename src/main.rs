@@ -84,14 +84,14 @@ impl<F: Fn(&ParamVec) -> f32> GravitationalSearch<F> {
         let worst = errs.iter().max_by(|x, y| x.1.total_cmp(&y.1)).unwrap().1;
 
         // compute non-normalised mass values
-        let mut masses: Vec<f32> = errs
+        let masses: Vec<f32> = errs
             .iter()
             .map(|x| (x.1 - worst) / (best - worst))
             .collect();
 
-        // normalise mass values
-        let total_mass: f32 = masses.iter().sum();
-        masses.iter_mut().for_each(|x| *x /= total_mass);
+        // normalise mass values (seemingly worse)
+        // let total_mass: f32 = masses.iter().sum();
+        // masses.iter_mut().for_each(|x| *x /= total_mass);
 
         // attract towards the KB best points
         let top_fitnesses = errs
