@@ -2,33 +2,33 @@ extern crate approx;
 extern crate nalgebra as na;
 
 use rand::prelude::*;
-use std::{f32::consts::PI, time::Instant};
+use std::{f64::consts::PI, time::Instant};
 
-type ParamVec = na::SVector<f32, 11>;
-type SenseVec = na::SVector<f32, 3>;
-type SenseMat = na::Matrix<f32, na::U3, na::Dyn, na::VecStorage<f32, na::U3, na::Dyn>>;
-type PosVec = na::Vector3<f32>;
-type PosMat = na::Matrix3xX<f32>;
+type ParamVec = na::SVector<f64, 11>;
+type SenseVec = na::SVector<f64, 3>;
+type SenseMat = na::Matrix<f64, na::U3, na::Dyn, na::VecStorage<f64, na::U3, na::Dyn>>;
+type PosVec = na::Vector3<f64>;
+type PosMat = na::Matrix3xX<f64>;
 
 const N: usize = 200;
 const MAX_ITERS: u32 = 1000;
 const RP: i32 = 1;
 const KB: usize = 2;
-const G0: f32 = 0.1;
-const BETA: f32 = 20.0;
-const EPSILON: f32 = 1e-30;
+const G0: f64 = 0.1;
+const BETA: f64 = 20.0;
+const EPSILON: f64 = 1e-30;
 
-struct GravitationalSearch<F: Fn(&ParamVec) -> f32> {
+struct GravitationalSearch<F: Fn(&ParamVec) -> f64> {
     rng: ThreadRng,
     iter: u32,
     best: ParamVec,
-    best_score: f32,
+    best_score: f64,
     x: Vec<ParamVec>,
     v: Vec<ParamVec>,
     eval: F,
 }
 
-impl<F: Fn(&ParamVec) -> f32> GravitationalSearch<F> {
+impl<F: Fn(&ParamVec) -> f64> GravitationalSearch<F> {
     pub fn from_dist(prior: &ParamVec, range: &ParamVec, eval: F) -> Self {
         let mut obj = GravitationalSearch {
             rng: rand::rng(),
@@ -63,13 +63,13 @@ impl<F: Fn(&ParamVec) -> f32> GravitationalSearch<F> {
         self.iter
     }
 
-    pub fn best(&self) -> (&ParamVec, f32) {
+    pub fn best(&self) -> (&ParamVec, f64) {
         (&self.best, self.best_score)
     }
 
     pub fn step(&mut self) -> bool {
         // evaluate current points, attach their indices like so: (idx, fitness)
-        let mut errs: Vec<(usize, f32)> = self
+        let mut errs: Vec<(usize, f64)> = self
             .x
             .iter()
             .enumerate()
@@ -84,13 +84,13 @@ impl<F: Fn(&ParamVec) -> f32> GravitationalSearch<F> {
         let worst = errs.iter().max_by(|x, y| x.1.total_cmp(&y.1)).unwrap().1;
 
         // compute non-normalised mass values
-        let masses: Vec<f32> = errs
+        let masses: Vec<f64> = errs
             .iter()
             .map(|x| (x.1 - worst) / (best - worst))
             .collect();
 
         // normalise mass values (seemingly worse)
-        // let total_mass: f32 = masses.iter().sum();
+        // let total_mass: f64 = masses.iter().sum();
         // masses.iter_mut().for_each(|x| *x /= total_mass);
 
         // attract towards the KB best points
@@ -98,7 +98,7 @@ impl<F: Fn(&ParamVec) -> f32> GravitationalSearch<F> {
             .select_nth_unstable_by(KB, |x, y| x.1.total_cmp(&y.1))
             .0;
 
-        let g_iter = G0 * f32::exp(-BETA * (self.iter as f32 / MAX_ITERS as f32));
+        let g_iter = G0 * f64::exp(-BETA * (self.iter as f64 / MAX_ITERS as f64));
         let mut accelerations: Vec<ParamVec> = vec![ParamVec::repeat(0.0); N];
         for (i, point) in self.x.iter().enumerate() {
             for (j, _) in top_fitnesses.iter() {
@@ -152,16 +152,17 @@ impl<F: Fn(&ParamVec, &SenseVec) -> PosVec> CalibrationEvaluator<F> {
         positions
     }
 
-    pub fn eval(&self, params: &ParamVec) -> f32 {
+    pub fn eval(&self, params: &ParamVec) -> f64 {
         (&self.targets - self.effector_positions(params))
             .abs()
             .column_sum()
             .norm()
-            / (self.targets.ncols() as f32)
+            / (self.targets.ncols() as f64)
     }
 }
 
-fn dh_matrix(a: f32, d: f32, alpha: f32, theta: f32) -> na::Matrix4<f32> {
+#[allow(dead_code)]
+fn dh_matrix(a: f64, d: f64, alpha: f64, theta: f64) -> na::Matrix4<f64> {
     let ct = theta.cos();
     let st = theta.sin();
     let ca = alpha.cos();
@@ -174,30 +175,39 @@ fn dh_matrix(a: f32, d: f32, alpha: f32, theta: f32) -> na::Matrix4<f32> {
         0., sa,       ca,       d     ,
         0., 0.,       0.,       1.    ,
     ];
-    na::Matrix4::<f32>::from_row_slice(&h)
+    na::Matrix4::<f64>::from_row_slice(&h)
 }
 
 fn generator(params: &ParamVec, senses: &SenseVec) -> PosVec {
     #[rustfmt::skip]
-    let mut transform = na::Matrix4::<f32>::from_row_slice(&[
-        1., 0., 0., params[0],
-        0., 1., 0., params[1],
-        0., 0., 1., 0.       ,
-        0., 0., 0., 1.       ,
-    ]);
-
-    #[rustfmt::skip]
-    let j = na::SMatrix::<f32, 3, 11>::from_row_slice(&[
+    let j = na::SMatrix::<f64, 3, 11>::from_row_slice(&[
         0., 0., 0., 0., 0., senses[0], 0., 0., 1., 0., 0.,
         0., 0., 0., 0., 0., 0., senses[1], 0., 0., 1., 0.,
         0., 0., 0., 0., 0., 0., 0., senses[2], 0., 0., 1.,
     ]) * params;
 
+    /* matrix fk method, use as reference
+    #[rustfmt::skip]
+    let mut transform = na::Matrix4::<f64>::from_row_slice(&[
+        1., 0., 0., params[0],
+        0., 1., 0., params[1],
+        0., 0., 1., 0.       ,
+        0., 0., 0., 1.       ,
+    ]);
     transform *= dh_matrix(0., params[2], PI / 2., PI / 2. + j[0])
         * dh_matrix(params[3], 0., 0., j[1])
         * dh_matrix(params[4], 0., 0., j[2]);
 
     transform.fixed_view::<3, 1>(0, 3).into()
+    */
+
+    let r = params[3] * j[1].cos() + params[4] * (j[1] + j[2]).cos();
+
+    PosVec::new(
+        params[0] - j[0].sin() * r,
+        params[1] + j[0].cos() * r,
+        params[2] + params[3] * j[1].sin() + params[4] * (j[1] + j[2]).sin(),
+    )
 }
 
 fn main() {
@@ -226,14 +236,14 @@ fn main() {
     let b2 = PI / 2. - m2 * 4777.;
     let b3 = -PI / 2. - m3 * 2444.;
     #[rustfmt::skip]
-    let prior_array: [f32; 11] = [30., -130., 62., 314., 333., m1, m2, m3, b1 + f32::to_radians(50.), b2, b3];
+    let prior_array: [f64; 11] = [30., -130., 62., 314., 333., m1, m2, m3, b1 + f64::to_radians(50.), b2, b3];
     let prior = ParamVec::from_row_slice(&prior_array);
 
     let err_l = 5.;
     let err_m = 1e-4;
     let err_b = 0.1;
     #[rustfmt::skip]
-    let range_array: [f32; 11] = [15., 15., err_l, err_l, err_l, err_m, err_m, err_m, err_b, err_b, err_b];
+    let range_array: [f64; 11] = [15., 15., err_l, err_l, err_l, err_m, err_m, err_m, err_b, err_b, err_b];
     let range = ParamVec::from_row_slice(&range_array);
 
     let mut grav = GravitationalSearch::from_dist(&prior, &range, |x| train.eval(x));
